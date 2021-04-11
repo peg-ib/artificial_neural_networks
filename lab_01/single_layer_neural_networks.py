@@ -1,6 +1,6 @@
-from math import fabs
 import itertools
-import numpy as np
+from prettytable import PrettyTable
+import matplotlib.pyplot as plt
 
 
 def boolean_function(x1, x2, x3, x4):
@@ -23,63 +23,134 @@ def step_activation_function(net):
     return 0 if net < 0 else 1, net
 
 
+def computation_out(net):
+    return (net / (1 + abs(net)) + 1) / 2
+
+
 def softsign_activation_function(net):
-    out = 0.5 * (net / (1 + fabs(net) + 1))
-    return 0 if out < 0 else 1, out
+    out = computation_out(net)
+    return 0 if out < 0.5 else 1, net
 
 
 def evaluate_neural_network(input_data, weights, function_selection):
     net = 0
     for iteration in range(5):
         net += weights[iteration] * input_data[iteration]
-    if function_selection is True:
+    if function_selection == 'step':
         return step_activation_function(net)
     else:
         return softsign_activation_function(net)
 
 
-def evaluate_error(desired, actual):
-    return desired - actual
-
-
-def correct_weight(weights, error, values, out, function_selection):
+def correct_weights(values, error, weights, net, function_selection):
     n = 0.3
-    if function_selection is True:
+    if function_selection == 'step':
         for iteration in range(5):
             weights[iteration] = weights[iteration] + n * error * values[iteration]
     else:
         for iteration in range(5):
-            weights[iteration] = weights[iteration] + n * error * (2 / (2 + 2 * fabs(out)) ** 2) * values[iteration]
+            weights[iteration] = weights[iteration] + n * error * (1 / (2 * ((abs(net) + 1) ** 2))) * values[iteration]
     return weights
 
 
-def learning_neural_network(function_selection):
+def actual_boolean_vector(boolean_variable_sets, weights, function_selection):
+    result = []
+    for value in boolean_variable_sets:
+        y, net = evaluate_neural_network(value, weights, function_selection)
+        result.append(y)
+    return result
+
+
+def desired_boolean_vector(boolean_variable_sets):
+    result = []
+    for value in boolean_variable_sets:
+        t = boolean_function(value[1], value[2], value[3], value[4])
+        result.append(t)
+    return result
+
+
+def error_calculation(desired_vector, actual_vector):
+    errors = 0
+    for digit in range(len(desired_vector)):
+        if actual_vector[digit] != desired_vector[digit]:
+            errors += 1
+    return errors
+
+
+def learning(boolean_variable_sets, function_selection, search_minimum=None):
     weights = [0, 0, 0, 0, 0]
-    bool_values = value_table()
+    number_era = 0
+    table = PrettyTable()
+    table.field_names = ['Era,k', 'Weights vector,W', 'Output vector,Y', 'Total error,E']
+    plot_errors = []
+    desired_vector = desired_boolean_vector(boolean_variable_sets)
+    actual_vector = actual_boolean_vector(boolean_variable_sets, weights, function_selection)
+    errors = error_calculation(desired_vector, actual_vector)
+    plot_errors.append(errors)
+    table.add_row([number_era, str(weights), actual_vector, errors])
     while True:
-        errors = 0
-        result = []
-        res = []
-        for value in bool_values:
-            desired = boolean_function(value[1], value[2], value[3], value[4])
-            actual, out = evaluate_neural_network(value, weights, function_selection)
-            res.append(desired)
-            result.append(actual)
-            error = evaluate_error(desired, actual)
-            weights = correct_weight(weights, error, value, out, function_selection)
-            if actual != desired:
-                errors += 1
-        print(result)
-        print(errors)
+        number_era += 1
+        desired_vector = []
+        for value in boolean_variable_sets:
+            t = boolean_function(value[1], value[2], value[3], value[4])
+            y, net = evaluate_neural_network(value, weights, function_selection)
+            desired_vector.append(t)
+            error = t - y
+            weights = correct_weights(value, error, weights, net, function_selection)
+        actual_vector = actual_boolean_vector(boolean_variable_sets, weights, function_selection)
+        errors = error_calculation(desired_vector, actual_vector)
+        plot_errors.append(errors)
+        table.add_row([number_era, str(weights), actual_vector, errors])
         if errors == 0:
-            break
+            number_era += 1
+            if search_minimum != 'yes':
+                if function_selection == 'step':
+                    plt.title("Step activation function")
+                    plt.xlabel("k")
+                    plt.ylabel("E")
+                    plt.plot(range(number_era), plot_errors)
+                    plt.show()
+                else:
+                    plt.title("Softsign activation function")
+                    plt.xlabel("k")
+                    plt.ylabel("E")
+                    plt.plot(range(number_era), plot_errors)
+                    plt.show()
+                print(table)
+            return weights
 
 
-# True - step_activation_function
-# False - softsign_activation_function
+def search_minimum_set(boolean_variable_sets):
+    weights = []
+    combination_min = 200
+    value_combination = []
+    for number in range(1, 17):
+        for combination in itertools.combinations(boolean_variable_sets, number):
+            actual_result = []
+            desired_result = []
+            current_weights = learning(combination, 'softsign', 'yes')
+            for value in boolean_variable_sets:
+                actual_result.append(evaluate_neural_network(value, current_weights, False)[0])
+                desired_result.append(boolean_function(value[1], value[2], value[3], value[4]))
+            if actual_result == desired_result and len(combination) < combination_min:
+                combination_min = len(combination)
+                weights = current_weights
+                value_combination = combination
+    print('Minimum set:')
+    for i in range(len(value_combination)):
+        print('X', i + 1, ' = ', value_combination[i], ' ', sep='', end=' ')
+    print()
+    print("\nSynaptic coefficients:")
+    print(weights)
+    print('\nFull training required:')
+    learning(value_combination, 'softsign')
 
 
 if __name__ == '__main__':
-    learning_neural_network(True)
-    learning_neural_network(False)
-
+    bool_values = value_table()
+    print('STEP ACTIVATION FUNCTION:')
+    learning(bool_values, 'step')
+    print('\nSOFTSIGN ACTIVATION FUNCTION:')
+    learning(bool_values, 'softsign')
+    print('\nSEARCH FOR THE MINIMUM SET:\n')
+    search_minimum_set(bool_values)
